@@ -22,6 +22,10 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Enable after AWS is provisioned: set repo variable DEPLOY_ENABLED=true
+    # (Settings -> Secrets and variables -> Actions -> Variables) and add the
+    # AWS_DEPLOY_ROLE_ARN secret. Until then this job is skipped, not failed.
+    if: vars.DEPLOY_ENABLED == 'true'
     steps:
       - uses: actions/checkout@v4
 

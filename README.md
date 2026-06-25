@@ -150,8 +150,10 @@ Outputs:
 - `github_actions_role_arn` — use it in the next step.
 
 ### Wire up CI/CD
-In the GitHub repo settings → **Secrets and variables → Actions**, add:
-- `AWS_DEPLOY_ROLE_ARN` = the `github_actions_role_arn` output.
+In the GitHub repo settings → **Secrets and variables → Actions**:
+- Add **secret** `AWS_DEPLOY_ROLE_ARN` = the `github_actions_role_arn` output.
+- Add **variable** `DEPLOY_ENABLED` = `true` to turn the deploy job on. (Until
+  then the `deploy` job is skipped, so the repo stays green before AWS exists.)
 
 If your region/repo/project name differ from defaults, update the `env:` block in
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
