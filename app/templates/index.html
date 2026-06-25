@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevOps Docs RAG Assistant</title>
+  <style>
+    :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --accent:#2f81f7; --muted:#8b949e; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+           background:var(--bg); color:var(--text); display:flex; justify-content:center; }
+    .wrap { width:100%; max-width:820px; padding:24px 16px 120px; }
+    header h1 { font-size:1.4rem; margin:0 0 4px; }
+    header p { color:var(--muted); margin:0 0 20px; font-size:.9rem; }
+    #chat { display:flex; flex-direction:column; gap:14px; }
+    .msg { padding:12px 14px; border-radius:10px; line-height:1.5; white-space:pre-wrap; word-wrap:break-word; }
+    .user { background:var(--accent); color:#fff; align-self:flex-end; max-width:80%; }
+    .bot { background:var(--panel); border:1px solid var(--border); align-self:flex-start; max-width:92%; }
+    .sources { margin-top:10px; font-size:.78rem; color:var(--muted); border-top:1px solid var(--border); padding-top:8px; }
+    .sources b { color:var(--text); }
+    form { position:fixed; bottom:0; left:0; right:0; background:var(--bg); border-top:1px solid var(--border);
+           padding:14px; display:flex; justify-content:center; }
+    .inputrow { width:100%; max-width:820px; display:flex; gap:8px; }
+    input { flex:1; padding:12px 14px; border-radius:10px; border:1px solid var(--border);
+            background:var(--panel); color:var(--text); font-size:1rem; }
+    button { padding:0 20px; border:none; border-radius:10px; background:var(--accent); color:#fff;
+             font-weight:600; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    code { background:#0008; padding:1px 5px; border-radius:4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🛠️ DevOps Docs RAG Assistant</h1>
+      <p>Ask about Docker, Kubernetes, Terraform, AWS, CI/CD &amp; Git. Answers are grounded in a curated docs knowledge base (RAG).</p>
+    </header>
+    <div id="chat"></div>
+  </div>
+
+  <form id="form">
+    <div class="inputrow">
+      <input id="q" placeholder="e.g. How do I roll back a Kubernetes deployment?" autocomplete="off" />
+      <button id="send" type="submit">Ask</button>
+    </div>
+  </form>
+
+  <script>
+    const chat = document.getElementById("chat");
+    const form = document.getElementById("form");
+    const input = document.getElementById("q");
+    const send = document.getElementById("send");
+
+    function add(role, html) {
+      const div = document.createElement("div");
+      div.className = "msg " + role;
+      div.innerHTML = html;
+      chat.appendChild(div);
+      window.scrollTo(0, document.body.scrollHeight);
+      return div;
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const question = input.value.trim();
+      if (!question) return;
+      add("user", escapeHtml(question));
+      input.value = "";
+      send.disabled = true;
+      const thinking = add("bot", "Thinking…");
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Request failed");
+
+        let html = escapeHtml(data.answer);
+        if (data.sources && data.sources.length) {
+          const items = data.sources
+            .map(s => `<div>• <b>${escapeHtml(s.source)}</b> (score ${s.score})</div>`)
+            .join("");
+          html += `<div class="sources"><div>Sources:</div>${items}</div>`;
+        }
+        thinking.innerHTML = html;
+      } catch (err) {
+        thinking.innerHTML = "⚠️ " + escapeHtml(err.message);
+      } finally {
+        send.disabled = false;
+        input.focus();
+      }
+    });
+  </script>
+</body>
+</html>

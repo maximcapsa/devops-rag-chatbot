@@ -1,0 +1,17 @@
+.git
+.github
+terraform
+tests
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.env
+vectorstore/index.faiss
+vectorstore/meta.json
+*.md
+!data/*.md
+README.md
+docs

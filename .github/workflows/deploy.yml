@@ -1,0 +1,75 @@
+name: deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: devops-rag
+  INSTANCE_TAG_KEY: App
+  INSTANCE_TAG_VALUE: devops-rag
+
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPOSITORY"
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+      - name: Deploy to EC2 via SSM RunCommand
+        run: |
+          set -euo pipefail
+          CMD_ID=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy ${{ github.sha }}" \
+            --targets "Key=tag:${INSTANCE_TAG_KEY},Values=${INSTANCE_TAG_VALUE}" \
+            --parameters 'commands=["/usr/local/bin/deploy-app.sh"]' \
+            --query "Command.CommandId" --output text)
+          echo "SSM command: $CMD_ID"
+
+          echo "Waiting for deploy to finish..."
+          for i in $(seq 1 30); do
+            STATUS=$(aws ssm list-command-invocations \
+              --region "$AWS_REGION" --command-id "$CMD_ID" --details \
+              --query "CommandInvocations[0].Status" --output text 2>/dev/null || echo "Pending")
+            echo "  status: $STATUS"
+            case "$STATUS" in
+              Success) echo "Deploy succeeded."; exit 0 ;;
+              Failed|Cancelled|TimedOut)
+                aws ssm list-command-invocations --region "$AWS_REGION" \
+                  --command-id "$CMD_ID" --details \
+                  --query "CommandInvocations[0].CommandPlugins[0].Output" --output text
+                echo "Deploy failed."; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "Timed out waiting for SSM command."; exit 1

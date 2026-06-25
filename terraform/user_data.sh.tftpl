@@ -1,0 +1,48 @@
+#!/bin/bash
+set -euxo pipefail
+
+# --- Install Docker + CloudWatch agent ---
+dnf update -y
+dnf install -y docker amazon-cloudwatch-agent
+systemctl enable --now docker
+usermod -aG docker ec2-user || true
+
+# --- CloudWatch agent (pulls config from SSM Parameter Store) ---
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s -c ssm:${cw_config_ssm} || true
+
+# --- Deploy script (re-used by CI via SSM RunCommand) ---
+cat >/usr/local/bin/deploy-app.sh <<'DEPLOY'
+#!/bin/bash
+set -euxo pipefail
+REGION="${region}"
+ECR="${ecr_repo_url}"
+REGISTRY="$${ECR%%/*}"
+
+aws ecr get-login-password --region "$REGION" \
+  | docker login --username AWS --password-stdin "$REGISTRY"
+docker pull "$ECR:latest"
+
+GROQ=$(aws ssm get-parameter --name "${groq_param}" --with-decryption \
+  --region "$REGION" --query Parameter.Value --output text)
+VOYAGE=$(aws ssm get-parameter --name "${voyage_param}" --with-decryption \
+  --region "$REGION" --query Parameter.Value --output text)
+
+docker rm -f devops-rag 2>/dev/null || true
+docker run -d --name devops-rag --restart unless-stopped -p 80:8000 \
+  --log-driver=awslogs \
+  --log-opt awslogs-region="$REGION" \
+  --log-opt awslogs-group="${log_group}" \
+  --log-opt awslogs-create-group=true \
+  -e GROQ_API_KEY="$GROQ" \
+  -e VOYAGE_API_KEY="$VOYAGE" \
+  -e GROQ_MODEL="${groq_model}" \
+  -e VOYAGE_MODEL="${voyage_model}" \
+  "$ECR:latest"
+
+docker image prune -f || true
+DEPLOY
+chmod +x /usr/local/bin/deploy-app.sh
+
+# First boot: try to deploy. Harmless if CI hasn't pushed an image yet.
+/usr/local/bin/deploy-app.sh || echo "No image yet — CI will deploy on first push."
