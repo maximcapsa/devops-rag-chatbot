@@ -1,41 +1,19 @@
-"""Demo: deliberately insecure helpers to show GateKeeper blocking a PR.
+"""Demo helper — now cleaned up (no findings).
 
-Do NOT use any of this. Every function is an intentional SonarCloud finding.
+Previous revisions of this file intentionally contained vulnerabilities to show
+GateKeeper blocking the PR. This revision removes them so the gate should PASS —
+which only happens if GateKeeper reads THIS commit's analysis, not a stale one.
 """
 
 import hashlib
 import os
-import subprocess
-
-# Hardcoded credential (SonarCloud: vulnerability).
-OPENAI_API_KEY = "sk-proj-1234567890abcdefHARDCODEDsecretDONOTSHIP"
-
-# Hardcoded password — rule python:S2068 raises this as a VULNERABILITY (not a hotspot).
-DB_PASSWORD = "S3cr3t-Pa55word-do-not-ship"
-
-
-def connect_db():
-    # Uses the hardcoded password above.
-    return {"user": "admin", "password": DB_PASSWORD}
-
-
-def run_ingest(path: str):
-    # Shell injection: untrusted input straight into a shell (vulnerability).
-    return subprocess.run(f"python ingest.py {path}", shell=True, check=False)
 
 
 def cache_key(query: str) -> str:
-    # Weak hashing algorithm (vulnerability / hotspot).
-    return hashlib.md5(query.encode()).hexdigest()
-
-
-def run_filter(expr: str):
-    # Arbitrary code execution via eval on a user-supplied expression (vulnerability).
-    return eval(expr)  # noqa: S307
+    # Non-cryptographic use, but use a strong hash to avoid findings.
+    return hashlib.sha256(query.encode()).hexdigest()
 
 
 def api_key() -> str:
-    # Leaks the hardcoded key above when the env var is unset.
-    return os.getenv("OPENAI_API_KEY", OPENAI_API_KEY)
-
-# touch to force a fresh analysis (vulnerability still present above)
+    # Read from the environment only; no hardcoded fallback.
+    return os.environ["OPENAI_API_KEY"]
