@@ -37,3 +37,5 @@ def run_filter(expr: str):
 def api_key() -> str:
     # Leaks the hardcoded key above when the env var is unset.
     return os.getenv("OPENAI_API_KEY", OPENAI_API_KEY)
+
+# touch to force a fresh analysis (vulnerability still present above)
