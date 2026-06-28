@@ -10,6 +10,14 @@ import subprocess
 # Hardcoded credential (SonarCloud: vulnerability).
 OPENAI_API_KEY = "sk-proj-1234567890abcdefHARDCODEDsecretDONOTSHIP"
 
+# Hardcoded password — rule python:S2068 raises this as a VULNERABILITY (not a hotspot).
+DB_PASSWORD = "S3cr3t-Pa55word-do-not-ship"
+
+
+def connect_db():
+    # Uses the hardcoded password above.
+    return {"user": "admin", "password": DB_PASSWORD}
+
 
 def run_ingest(path: str):
     # Shell injection: untrusted input straight into a shell (vulnerability).
